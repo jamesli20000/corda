@@ -27,6 +27,7 @@ import net.corda.nodeapi.internal.persistence.CordaPersistence
 import net.corda.nodeapi.internal.persistence.DatabaseTransaction
 import net.corda.nodeapi.internal.persistence.contextTransaction
 import net.corda.nodeapi.internal.persistence.contextTransactionOrNull
+import net.corda.nodeapi.internal.tracing.CordaTracer
 import org.apache.activemq.artemis.utils.ReusableLatch
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
@@ -207,6 +208,10 @@ class FlowStateMachineImpl<R>(override val id: StateMachineRunId,
     override fun run() {
         logic.stateMachine = this
 
+        CordaTracer.current.flowSpan { span, _ ->
+            span.setTag("our-identity", ourIdentity.toString())
+        }
+
         setLoggingContext()
 
         initialiseFlow()
@@ -247,6 +252,9 @@ class FlowStateMachineImpl<R>(override val id: StateMachineRunId,
 
         recordDuration(startTime)
         getTransientField(TransientValues::unfinishedFibers).countDown()
+
+        // TODO end of flow (see ErrorFlowTransition.kt) - handle abortions
+        CordaTracer.current.endFlow()
     }
 
     @Suspendable
@@ -308,6 +316,7 @@ class FlowStateMachineImpl<R>(override val id: StateMachineRunId,
     @Suspendable
     private fun abortFiber(): Nothing {
         while (true) {
+            // TODO ...
             Fiber.park()
         }
     }

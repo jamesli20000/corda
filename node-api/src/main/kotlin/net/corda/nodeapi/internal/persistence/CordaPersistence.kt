@@ -3,6 +3,9 @@ package net.corda.nodeapi.internal.persistence
 import co.paralleluniverse.strands.Strand
 import net.corda.core.schemas.MappedSchema
 import net.corda.core.utilities.contextLogger
+import net.corda.nodeapi.internal.tracing.CordaTracer
+import net.corda.nodeapi.internal.tracing.CordaTracer.Companion.error
+import net.corda.nodeapi.internal.tracing.CordaTracer.Companion.tag
 import rx.Observable
 import rx.Subscriber
 import rx.subjects.UnicastSubject
@@ -138,9 +141,20 @@ class CordaPersistence(
         _contextDatabase.set(this)
         val outer = contextTransactionOrNull
         return if (outer != null) {
-            outer.statement()
+            CordaTracer.current.span("Transaction") {
+                outer.onCommit { it.tag("commit", true) }
+                outer.onRollback {
+                    it.tag("commit", false)
+                    it.error("Transaction rolled back")
+                }
+                it.tag("jdbc-url", contextDatabase.jdbcUrl)
+                outer.statement()
+            }
         } else {
-            inTopLevelTransaction(isolationLevel, recoverableFailureTolerance, recoverAnyNestedSQLException, statement)
+            CordaTracer.current.span("Transaction") {
+                it.tag("jdbc-url", contextDatabase.jdbcUrl)
+                inTopLevelTransaction(isolationLevel, recoverableFailureTolerance, recoverAnyNestedSQLException, statement)
+            }
         }
     }
 
